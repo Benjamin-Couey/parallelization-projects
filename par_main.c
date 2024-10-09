@@ -30,13 +30,13 @@ int main(int argc, char **argv){
 
 	// Variables all processes will use.
 	int foundNthPrime = 0;
-	int iteration = 0;
+	long long iteration = 0;
 	int primesPerIter = nprocs * batchSize;
 	int * resultBatch = (int*)malloc(sizeof(int)*batchSize);
 
 	// Variables only the root process will use.
 	int numTwins;
-	int lastPrime;
+	long long lastPrime;
 	int * gatheredResults;
 	int * foundNthPrimeBuffer;
 	if(my_rank == ROOT_RANK){
@@ -52,7 +52,7 @@ int main(int argc, char **argv){
 	while( !foundNthPrime ){
 		// Each process calculates if a different number is prime.
 		for( int index=0; index<batchSize; index++ ){
-			int num = 2 + my_rank * batchSize + (primesPerIter * iteration) + index;
+			long long num = 2 + my_rank * batchSize + (primesPerIter * iteration) + index;
 			resultBatch[ index ] = IsPrime( num );
 		}
 
@@ -62,12 +62,12 @@ int main(int argc, char **argv){
 		// Have the root process check for the presence of twin primes.
 		if(my_rank == ROOT_RANK){
 			for( int index=0; index<primesPerIter; index++ ){
-				int num = 2 + index + (primesPerIter * iteration);
+				long long num = 2 + index + (primesPerIter * iteration);
 				if( gatheredResults[index] ){
 					if( num - 2 == lastPrime ){
 						numTwins++;
 						if( numTwins == n ){
-							printf("The %dth twin prime is the pair (%d, %d).\n", n, lastPrime, num);
+							printf("The %dth twin prime is the pair (%lld, %lld).\n", n, lastPrime, num);
 							for( int index=0; index<nprocs; index++ ){
 								foundNthPrimeBuffer[index] = 1;
 							}
