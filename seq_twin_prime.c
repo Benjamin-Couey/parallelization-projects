@@ -1,3 +1,6 @@
+#include <stdio.h>
+#include <time.h>
+
 #include "seq_twin_prime.h"
 
 int IsPrime(long long num){
@@ -16,10 +19,14 @@ struct TwinPrime GetNthTwinPrime(int n){
 	long long lastPrime = 2;
 	int numTwins = 0;
 	long long num = 2;
-
+	double totalSeconds = 0.0;
 	while (numTwins < n) {
 		num++;
-		if(IsPrime(num)) {
+		clock_t begin = clock();
+		int isPrime = IsPrime(num);
+		clock_t end = clock();
+		totalSeconds += (double)(end - begin) / CLOCKS_PER_SEC;
+		if(isPrime) {
 			if( (num - 2) == lastPrime ) {
 				numTwins++;
 			}
@@ -28,6 +35,8 @@ struct TwinPrime GetNthTwinPrime(int n){
 			}
 		}
 	}
+
+	printf("Took %f seconds evaluating whether numbers were prime.\n", totalSeconds);
 
 	struct TwinPrime nthTwinPrime;
 	nthTwinPrime.first = lastPrime;
