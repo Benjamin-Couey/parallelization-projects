@@ -50,7 +50,7 @@ void TestGetNthTwinPrimeFirstTen(){
 	CU_ASSERT(nthTwinPrime.second == 109);
 }
 
-int main(int argc, char **argv){
+int main(){
 	CU_initialize_registry();
 	CU_pSuite suite = CU_add_suite("AddTestSuite", 0, 0);
 	CU_add_test(suite, "test of IsPrime() on 1 through 10", TestIsPrimeOneToTen);
