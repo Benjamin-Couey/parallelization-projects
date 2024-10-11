@@ -4,4 +4,4 @@ struct TwinPrime {
 };
 
 int IsPrime(long long num);
-struct TwinPrime GetNthTwinPrime(int n);
+struct TwinPrime GetNthTwinPrime(int n, int verbose);

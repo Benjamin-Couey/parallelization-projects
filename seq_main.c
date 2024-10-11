@@ -16,7 +16,7 @@ int main(int argc, char **argv){
 
   clock_t begin = clock();
 
-	struct TwinPrime nthTwinPrime = GetNthTwinPrime(n);
+	struct TwinPrime nthTwinPrime = GetNthTwinPrime(n, 1);
 
   clock_t end = clock();
   double seconds = (double)(end - begin) / CLOCKS_PER_SEC;
