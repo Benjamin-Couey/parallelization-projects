@@ -5,24 +5,30 @@
 
 int main(int argc, char **argv){
 
-	int n;
+	int n, verbose;
 
-	if (argc != 2) {
-    fprintf(stderr,"Please provide the following on the command line: n.\n");
+	if (argc != 3) {
+    fprintf(stderr,"Please provide the following on the command line: n and verbose.\n");
     return 0;
   }
 
 	sscanf(argv[1],"%d",&n);
+	sscanf(argv[2],"%d",&verbose);
 
-  clock_t begin = clock();
+	clock_t begin, end;
+	if( verbose ){
+		begin = clock();
+	}
 
-	struct TwinPrime nthTwinPrime = GetNthTwinPrime(n, 1);
+	struct TwinPrime nthTwinPrime = GetNthTwinPrime(n, verbose);
 
-  clock_t end = clock();
-  double seconds = (double)(end - begin) / CLOCKS_PER_SEC;
+	if( verbose ){
+		end = clock();
+	  double seconds = (double)(end - begin) / CLOCKS_PER_SEC;
+		printf("Took %f seconds.\n", seconds);
+	}
 
 	printf("The %dth twin prime is the pair (%lld, %lld).\n", n, nthTwinPrime.first, nthTwinPrime.second);
-  printf("Took %f seconds.\n", seconds);
 
 	return 0;
 }
