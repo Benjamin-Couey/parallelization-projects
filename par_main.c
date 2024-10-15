@@ -22,7 +22,7 @@ struct arguments {
 	int verbose;
 };
 
-static error_t ParseOpt( int key, char *arg, struct argp_state *state) {
+static error_t parse_opt( int key, char *arg, struct argp_state *state) {
 	struct arguments *arguments = state->input;
 	switch(key) {
 		case 'v':
@@ -45,18 +45,18 @@ static error_t ParseOpt( int key, char *arg, struct argp_state *state) {
 	return 0;
 }
 
-static struct argp argp = { options, ParseOpt, args_doc, doc };
+static struct argp argp = { options, parse_opt, args_doc, doc };
 
 int main(int argc, char **argv){
 
-	int n, batchSize, verbose;
-	int * argumentsBuffer = (int*)malloc(sizeof(int)*3);
+	int n, batch_size, verbose;
+	int * arguments_buffer = (int*)malloc(sizeof(int)*3);
 
-	int my_rank, nprocs;
+	int my_rank, n_procs;
 
   MPI_Init(&argc,&argv);
   MPI_Comm_rank(MPI_COMM_WORLD,&my_rank);
-  MPI_Comm_size(MPI_COMM_WORLD,&nprocs);
+  MPI_Comm_size(MPI_COMM_WORLD,&n_procs);
 
 	// Have the root process parse the command line arguments so any output will
 	// only be printed once.
@@ -66,78 +66,78 @@ int main(int argc, char **argv){
 
 		argp_parse (&argp, argc, argv, 0, 0, &arguments);
 
-		sscanf(arguments.args[0],"%d",&argumentsBuffer[0]);
-		sscanf(arguments.args[1],"%d",&argumentsBuffer[1]);
-		argumentsBuffer[2] = arguments.verbose;
+		sscanf(arguments.args[0],"%d",&arguments_buffer[0]);
+		sscanf(arguments.args[1],"%d",&arguments_buffer[1]);
+		arguments_buffer[2] = arguments.verbose;
 	}
 
 	// Broadcast the command line arguments processed by root.
 	// TODO: Calculate number of values to send from structure of arguments
-	MPI_Bcast( argumentsBuffer, 3, MPI_INT, ROOT_RANK, MPI_COMM_WORLD );
+	MPI_Bcast( arguments_buffer, 3, MPI_INT, ROOT_RANK, MPI_COMM_WORLD );
 
-	n = argumentsBuffer[0];
-	batchSize = argumentsBuffer[1];
-	verbose = argumentsBuffer[2];
+	n = arguments_buffer[0];
+	batch_size = arguments_buffer[1];
+	verbose = arguments_buffer[2];
 
-	free(argumentsBuffer);
+	free(arguments_buffer);
 
 	// Variables all processes will use.
-	int foundNthPrime = 0;
+	int found_nth_prime = 0;
 	long long iteration = 0;
-	int primesPerIter = nprocs * batchSize;
-	int * resultBatch = (int*)malloc(sizeof(int)*batchSize);
+	int primes_per_iter = n_procs * batch_size;
+	int * result_batch = (int*)malloc(sizeof(int)*batch_size);
 
 	// Variables only the root process will use.
-	int numTwins;
-	long long lastPrime;
-	int * gatheredResults;
-	int * foundNthPrimeBuffer;
+	int num_twins;
+	long long last_prime;
+	int * gathered_results;
+	int * found_nth_prime_buffer;
 	double begin;
 	if(my_rank == ROOT_RANK){
-		numTwins = 0;
-		lastPrime = 2;
-		gatheredResults = (int*)malloc(sizeof(int)*primesPerIter);
-		foundNthPrimeBuffer = (int*)malloc(sizeof(int)*nprocs);
-		for( int index=0; index<nprocs; index++ ){
-			foundNthPrimeBuffer[index] = 0;
+		num_twins = 0;
+		last_prime = 2;
+		gathered_results = (int*)malloc(sizeof(int)*primes_per_iter);
+		found_nth_prime_buffer = (int*)malloc(sizeof(int)*n_procs);
+		for( int index=0; index<n_procs; index++ ){
+			found_nth_prime_buffer[index] = 0;
 		}
 		if( verbose ){
 			begin = MPI_Wtime();
 		}
 	}
 
-	while( !foundNthPrime ){
+	while( !found_nth_prime ){
 		// Each process calculates if a different number is prime.
-		for( int index=0; index<batchSize; index++ ){
-			long long num = 2 + my_rank * batchSize + (primesPerIter * iteration) + index;
-			resultBatch[ index ] = IsPrime( num );
+		for( int index=0; index<batch_size; index++ ){
+			long long num = 2 + my_rank * batch_size + (primes_per_iter * iteration) + index;
+			result_batch[ index ] = is_prime( num );
 		}
 
 		// Gather results of prime calculations.
-		MPI_Gather( resultBatch, batchSize, MPI_INT, gatheredResults, batchSize, MPI_INT, ROOT_RANK, MPI_COMM_WORLD );
+		MPI_Gather( result_batch, batch_size, MPI_INT, gathered_results, batch_size, MPI_INT, ROOT_RANK, MPI_COMM_WORLD );
 
 		// Have the root process check for the presence of twin primes.
 		if(my_rank == ROOT_RANK){
-			for( int index=0; index<primesPerIter; index++ ){
-				long long num = 2 + index + (primesPerIter * iteration);
-				if( gatheredResults[index] ){
-					if( num - 2 == lastPrime ){
-						numTwins++;
-						if( numTwins == n ){
-							printf("The %dth twin prime is the pair (%lld, %lld).\n", n, lastPrime, num);
-							for( int index=0; index<nprocs; index++ ){
-								foundNthPrimeBuffer[index] = 1;
+			for( int index=0; index<primes_per_iter; index++ ){
+				long long num = 2 + index + (primes_per_iter * iteration);
+				if( gathered_results[index] ){
+					if( num - 2 == last_prime ){
+						num_twins++;
+						if( num_twins == n ){
+							printf("The %dth twin prime is the pair (%lld, %lld).\n", n, last_prime, num);
+							for( int index=0; index<n_procs; index++ ){
+								found_nth_prime_buffer[index] = 1;
 							}
 						}
 					}
-					lastPrime = num;
+					last_prime = num;
 				}
 			}
 		}
 
-		// Scatter the root's foundNthPrime to report whether the processes can all
+		// Scatter the root's found_nth_prime to report whether the processes can all
 		// stop.
-		MPI_Scatter( foundNthPrimeBuffer, 1, MPI_INT, &foundNthPrime, 1, MPI_INT, ROOT_RANK, MPI_COMM_WORLD );
+		MPI_Scatter( found_nth_prime_buffer, 1, MPI_INT, &found_nth_prime, 1, MPI_INT, ROOT_RANK, MPI_COMM_WORLD );
 
 		iteration++;
 	}
@@ -148,10 +148,10 @@ int main(int argc, char **argv){
 	  printf("Took %f seconds.\n", seconds);
 	}
 
-	free(resultBatch);
+	free(result_batch);
 	if(my_rank == ROOT_RANK) {
-    free(gatheredResults);
-		free(foundNthPrimeBuffer);
+    free(gathered_results);
+		free(found_nth_prime_buffer);
   }
 
 	MPI_Finalize();

@@ -6,7 +6,7 @@
 
 static char doc[] = "seq_twin_prime -- A simple sequential C script that calculates the nth twin prime.";
 
-static char args_doc[] = "Number of twin primes to calculate.";
+static char args_doc[] = "Number of twin primes to calculate";
 
 static struct argp_option options[] = {
 	{ "verbose", 'v', 0, 0, "Provide verbose output." },
@@ -18,7 +18,7 @@ struct arguments {
 	int verbose;
 };
 
-static error_t ParseOpt( int key, char *arg, struct argp_state *state) {
+static error_t parse_opt( int key, char *arg, struct argp_state *state) {
 	struct arguments *arguments = state->input;
 	switch(key) {
 		case 'v':
@@ -41,7 +41,7 @@ static error_t ParseOpt( int key, char *arg, struct argp_state *state) {
 	return 0;
 }
 
-static struct argp argp = { options, ParseOpt, args_doc, doc };
+static struct argp argp = { options, parse_opt, args_doc, doc };
 
 int main(int argc, char **argv){
 
@@ -60,7 +60,7 @@ int main(int argc, char **argv){
 		begin = clock();
 	}
 
-	struct TwinPrime nthTwinPrime = GetNthTwinPrime(n, verbose);
+	struct twin_prime nth_twin_prime = get_nth_twin_prime(n, verbose);
 
 	if( verbose ){
 		end = clock();
@@ -68,7 +68,7 @@ int main(int argc, char **argv){
 		printf("Took %f seconds.\n", seconds);
 	}
 
-	printf("The %dth twin prime is the pair (%lld, %lld).\n", n, nthTwinPrime.first, nthTwinPrime.second);
+	printf("The %dth twin prime is the pair (%lld, %lld).\n", n, nth_twin_prime.first, nth_twin_prime.second);
 
 	return 0;
 }

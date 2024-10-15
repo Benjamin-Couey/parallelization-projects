@@ -3,7 +3,7 @@
 
 #include "seq_twin_prime.h"
 
-int IsPrime(long long num){
+int is_prime(long long num){
 	if (num > 1) {
 		for (long long divisor=2; divisor < num; divisor++) {
 			if (num % divisor == 0) {
@@ -15,38 +15,38 @@ int IsPrime(long long num){
 	return 0;
 }
 
-struct TwinPrime GetNthTwinPrime(int n, int verbose){
-	long long lastPrime = 2;
-	int numTwins = 0;
+struct twin_prime get_nth_twin_prime(int n, int verbose){
+	long long last_prime = 2;
+	int num_twins = 0;
 	long long num = 2;
-	double totalSeconds = 0.0;
+	double total_seconds = 0.0;
 	clock_t begin, end;
-	while (numTwins < n) {
+	while (num_twins < n) {
 		num++;
 		if( verbose ){
 			begin = clock();
 		}
-		int isPrime = IsPrime(num);
+		int num_is_prime = is_prime(num);
 		if( verbose ){
 			end = clock();
-			totalSeconds += (double)(end - begin) / CLOCKS_PER_SEC;
+			total_seconds += (double)(end - begin) / CLOCKS_PER_SEC;
 		}
-		if(isPrime) {
-			if( (num - 2) == lastPrime ) {
-				numTwins++;
+		if(num_is_prime) {
+			if( (num - 2) == last_prime ) {
+				num_twins++;
 			}
-			if(numTwins < n){
-				lastPrime = num;
+			if(num_twins < n){
+				last_prime = num;
 			}
 		}
 	}
 
 	if( verbose ){
-		printf("Took %f seconds evaluating whether numbers were prime.\n", totalSeconds);
+		printf("Took %f seconds evaluating whether numbers were prime.\n", total_seconds);
 	}
 
-	struct TwinPrime nthTwinPrime;
-	nthTwinPrime.first = lastPrime;
-	nthTwinPrime.second = num;
-	return nthTwinPrime;
+	struct twin_prime nth_twin_prime;
+	nth_twin_prime.first = last_prime;
+	nth_twin_prime.second = num;
+	return nth_twin_prime;
 }
