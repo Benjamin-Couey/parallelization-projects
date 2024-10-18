@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <time.h>
 
-#include "seq_twin_prime.c"
+#include "twin_prime.c"
 
 static char doc[] = "seq_twin_prime -- A simple sequential C script that calculates the nth twin prime.";
 

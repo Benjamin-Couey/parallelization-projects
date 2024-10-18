@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <time.h>
 
-#include "seq_twin_prime.h"
+#include "twin_prime.h"
 
 int is_prime(long long num){
 	if (num > 1) {

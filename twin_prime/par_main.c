@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include "seq_twin_prime.c"
+#include "twin_prime.c"
 
 #define ROOT_RANK 0
 

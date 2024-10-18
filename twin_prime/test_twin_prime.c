@@ -1,7 +1,7 @@
 #include "CUnit/Basic.h"
 #include "CUnit/CUnit.h"
 
-#include "seq_twin_prime.c"
+#include "twin_prime.c"
 
 void test_is_prime_one_to_ten(){
 	CU_ASSERT(0 == is_prime(1));
