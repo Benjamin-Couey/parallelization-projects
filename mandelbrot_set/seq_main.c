@@ -46,17 +46,17 @@ int main(int argc, char **argv){
 	sscanf(arguments.args[0],"%d",&x_resolution);
 	sscanf(arguments.args[0],"%d",&y_resolution);
 
-	double x_step = 4.0 / x_resolution;
-	double y_step = 4.0 / y_resolution;
+	double x_step = 3.0 / x_resolution;
+	double y_step = 3.0 / y_resolution;
 
 	FILE * file;
 	file = fopen("mandelbrot_set.csv", "w+");
-	for( double y=-2.0; y<=2.0; y+=y_step ){
-		for( double x=-2.0; x<=2.0; x+=x_step ){
+	for( double y=-1.5; y<=1.5; y+=y_step ){
+		for( double x=-2.0; x<=1.0; x+=x_step ){
 			double complex c = x + y * I;
 			int iterations = in_mandelbrot_set( c, max_iterations );
 			fprintf(file, "%d", iterations);
-			if( x + x_step <= 2.0 ){
+			if( x + x_step <= 1.0 ){
 				fprintf(file, ",");
 			}
 		}
