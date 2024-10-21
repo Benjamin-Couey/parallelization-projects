@@ -43,8 +43,8 @@ int main(int argc, char **argv){
 	argp_parse (&argp, argc, argv, 0, 0, &arguments);
 
 	sscanf(arguments.args[0],"%d",&max_iterations);
-	sscanf(arguments.args[0],"%d",&x_resolution);
-	sscanf(arguments.args[0],"%d",&y_resolution);
+	sscanf(arguments.args[1],"%d",&x_resolution);
+	sscanf(arguments.args[2],"%d",&y_resolution);
 
 	double x_step = 3.0 / x_resolution;
 	double y_step = 3.0 / y_resolution;
