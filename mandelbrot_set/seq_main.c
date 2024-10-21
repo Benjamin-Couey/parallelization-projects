@@ -1,6 +1,7 @@
 #include <argp.h>
 #include <complex.h>
 #include <stdio.h>
+#include <time.h>
 
 #include "mandelbrot_set.c"
 
@@ -8,13 +9,22 @@ static char doc[] = "mandelbrot_set -- A simple sequential C script that calcula
 
 static char args_doc[] = "Limit X resolution Y resolution";
 
+static struct argp_option options[] = {
+	{ "verbose", 'v', 0, 0, "Provide verbose output." },
+	{ 0 }
+};
+
 struct arguments {
 	char *args[3];
+	int verbose;
 };
 
 static error_t parse_opt( int key, char *arg, struct argp_state *state) {
 	struct arguments *arguments = state->input;
 	switch(key) {
+		case 'v':
+			arguments->verbose = 1;
+			break;
 		case ARGP_KEY_ARG:
 			if( state->arg_num >= 3 ){
 				argp_usage( state );
@@ -32,22 +42,29 @@ static error_t parse_opt( int key, char *arg, struct argp_state *state) {
 	return 0;
 }
 
-static struct argp argp = { 0, parse_opt, args_doc, doc };
+static struct argp argp = { options, parse_opt, args_doc, doc };
 
 int main(int argc, char **argv){
 
-	int max_iterations, x_resolution, y_resolution;
+	int verbose, max_iterations, x_resolution, y_resolution;
 
 	struct arguments arguments;
+	arguments.verbose = 0;
 
 	argp_parse (&argp, argc, argv, 0, 0, &arguments);
 
 	sscanf(arguments.args[0],"%d",&max_iterations);
 	sscanf(arguments.args[1],"%d",&x_resolution);
 	sscanf(arguments.args[2],"%d",&y_resolution);
+	verbose = arguments.verbose;
 
 	double x_step = 3.0 / x_resolution;
 	double y_step = 3.0 / y_resolution;
+
+	clock_t begin, end;
+	if( verbose ){
+		begin = clock();
+	}
 
 	FILE * file;
 	file = fopen("mandelbrot_set.csv", "w+");
@@ -60,6 +77,12 @@ int main(int argc, char **argv){
 		}
 	}
 	fclose(file);
+
+	if( verbose ){
+		end = clock();
+	  double seconds = (double)(end - begin) / CLOCKS_PER_SEC;
+		printf("Took %f seconds.\n", seconds);
+	}
 
 	return 0;
 }
