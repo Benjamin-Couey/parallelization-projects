@@ -69,8 +69,11 @@ int main(int argc, char **argv){
 	FILE * file;
 	file = fopen("mandelbrot_set.csv", "w+");
 	fprintf(file, "x,y,z\n");
-	for( double y=-1.5; y<=1.5; y+=y_step ){
-		for( double x=-2.0; x<=1.0; x+=x_step ){
+	double x, y;
+	for( int y_i=0; y_i<y_resolution; y_i++ ){
+		y = -1.5 + (y_i * y_step);
+		for( int x_i=0; x_i<x_resolution; x_i++ ){
+			x = -2.0 + x_i * x_step;
 			double complex c = x + y * I;
 			int iterations = in_mandelbrot_set( c, max_iterations );
 			fprintf(file, "%f,%f,%d\n", x, y, iterations);
