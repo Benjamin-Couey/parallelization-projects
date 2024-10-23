@@ -93,7 +93,7 @@ int main(int argc, char **argv){
 	double x_step = 3.0 / x_resolution;
 	double y_step = 3.0 / y_resolution;
 
-	clock_t begin, end;
+	clock_t begin, end, set_calc_begin, set_calc_end;
 	if( my_rank == ROOT_RANK && verbose ){
 		begin = clock();
 	}
@@ -128,6 +128,10 @@ int main(int argc, char **argv){
 		gathered_results = (struct in_set_result*)malloc(sizeof(struct in_set_result)*x_resolution*y_resolution);
 	}
 
+	if( verbose ){
+		set_calc_begin = clock();
+	}
+
 	// printf("Rank %d calculating points for y from %d to %d for a total of %d points\n", my_rank, y_i, max_y_i, points_per_rank);
 	// Calculate Mandelbrot set in range, store results in buffer.
 	while( y_i<max_y_i ){
@@ -145,6 +149,13 @@ int main(int argc, char **argv){
 		}
 		y_i++;
 	}
+
+	if( verbose ){
+		set_calc_end = clock();
+	  double seconds = (double)(set_calc_end - set_calc_begin) / CLOCKS_PER_SEC;
+		printf("Rank %d took %f seconds to calculate its share of the points.\n", my_rank, seconds);
+	}
+
 
 	//Create a datatype for the nth worker_results[n] struct
 	MPI_Datatype mpi_in_set_result;
