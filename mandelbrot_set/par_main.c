@@ -108,24 +108,48 @@ int main(int argc, char **argv){
 	double x, y;
 	int buffer_i = 0;
 	int y_per_rank = y_resolution / n_procs;
-	// Have each rank calculate the range of y values it will be responsible for.
-	int y_i = y_per_rank * my_rank;
-	int max_y_i = y_per_rank * (my_rank + 1);
-	// TODO: Currently, this implementation will miss some y values due to rounding.
-	// Assign any leftover y points to the last rank and figure out how to gather
-	// variable length result buffers (since the last rank has a different number
-	// of results).
-	// if( my_rank == n_procs-1 ){
-	// 	max_y_i = y_resolution;
-	// }
-	int points_per_rank = (max_y_i-y_i) * x_resolution;
+	int y_i, max_y_i, points_per_rank;
+	// An array to store the size of each rank's result buffer.
+  int * num_to_send = (int*)malloc(sizeof(int)*n_procs);
+	// Have each rank calculate the range of y values each rank will be responsible
+	// for and size of each rank's result buffer.
+	// Technically, only the root process needs this information for MPI_Gatherv,
+	// but it is convienent to do all these calculations in one place.
+	for( int index=0; index<n_procs; index++ ){
+		int temp_y_i = y_per_rank * index;
+		int temp_max_y_i = y_per_rank * (index + 1);
+		// Assign any leftover y points to the last rank.
+		// Since the last couple y points will be close to -1.5 and thus mostly outside
+		// the Mandelbrot set, this shouldn't create to large of a load imbalance.
+		if( index == n_procs-1 ){
+			temp_max_y_i = y_resolution;
+		}
+		int temp_points_per_rank = (temp_max_y_i-temp_y_i) * x_resolution;
+		num_to_send[index] = temp_points_per_rank;
+		// Save the results of this calculation to the approprite rank.
+		if( my_rank == index ){
+			y_i = temp_y_i;
+			max_y_i = temp_max_y_i;
+			points_per_rank = temp_points_per_rank;
+		}
+	}
+
+	// A buffer to store the results of a rank's calculations.
 	struct in_set_result * result_buffer = (struct in_set_result*)malloc(sizeof(struct in_set_result)*points_per_rank);
 
 	// Variables only the root process will use.
+	// A buffer to store the gathered results of all the ranks' calculations.
 	struct in_set_result * gathered_results;
+	// An array to store the displacement of the results the root rank will be
+  // receiving.
+  int * displacement;
 
 	if(my_rank == ROOT_RANK) {
 		gathered_results = (struct in_set_result*)malloc(sizeof(struct in_set_result)*x_resolution*y_resolution);
+		displacement = (int*)malloc(sizeof(int)*n_procs);
+		for ( int index=0; index<n_procs; index++) {
+			displacement[ index ] = (index > 0) ? ( displacement[ index-1 ] + num_to_send[ index-1 ] ) : 0;
+	  }
 	}
 
 	if( verbose ){
@@ -176,12 +200,13 @@ int main(int argc, char **argv){
 	MPI_Type_commit(&mpi_in_set_result);
 
 	// Gather results of Mandelbrot set calculations
-	MPI_Gather(
+	MPI_Gatherv(
 		result_buffer,
 		points_per_rank,
 		mpi_in_set_result,
 		gathered_results,
-		points_per_rank,
+		num_to_send,
+		displacement,
 		mpi_in_set_result,
 		ROOT_RANK,
 		MPI_COMM_WORLD
@@ -216,8 +241,10 @@ int main(int argc, char **argv){
 		fclose(file);
 	}
 
+	free(num_to_send);
 	free(result_buffer);
 	if(my_rank == ROOT_RANK) {
+		free(displacement);
 		free(gathered_results);
 	}
 
