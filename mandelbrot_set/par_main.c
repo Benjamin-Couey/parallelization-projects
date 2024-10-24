@@ -100,37 +100,98 @@ int main(int argc, char **argv){
 
 	// For high limits, the bulk of the computational time will be spent verifying
 	// points that are inside the Mandelbrot set.
-	// Since these points are densest for y values between about 0.66 and -0.66,
+	// Since these points are densest for y values between about -0.66 and 0.66,
 	// in an effort to balance the load that range will be divided evenly between
 	// all the ranks. The remaining y values will be divided seperately.
+
+	// The range of -0.66 to 0.66 is about 0.44 or 4/9ths of the full -1.5 to 1.5
+	// range of y values the script is calculating. This leaves two low density areas,
+	// each about 5/18ths on either side.
+	int low_density_size = y_resolution * 5 / 18;
+	int high_density_size = y_resolution * 4 / 9;
+
+	printf(
+		"low_density_size is %d and high_density_size is %d\n",
+		low_density_size,
+		high_density_size
+	);
 
 	// Variables all processes will use.
 	double x, y;
 	int buffer_i = 0;
-	int y_per_rank = y_resolution / n_procs;
-	int y_i, max_y_i, points_per_rank;
+	int y_per_rank;
+	int points_per_rank = 0;
+	// An array to store the starting and max y indices for the low and high density
+	// y values each rank is responsible for.
+	int * y_i = (int*)malloc(sizeof(int)*3);
+	int * max_y_i = (int*)malloc(sizeof(int)*3);
 	// An array to store the size of each rank's result buffer.
   int * num_to_send = (int*)malloc(sizeof(int)*n_procs);
+	for( int index=0; index<n_procs; index++ ){
+		num_to_send[index] = 0;
+	}
 	// Have each rank calculate the range of y values each rank will be responsible
 	// for and size of each rank's result buffer.
 	// Technically, only the root process needs this information for MPI_Gatherv,
 	// but it is convienent to do all these calculations in one place.
+
+ 	// TODO: This is currently bad from a readability/maintainability standpoint.
+	// Consider a simpler way to divy up the y values?
+
+	// Divide the first low density y indices.
+	y_per_rank = low_density_size / n_procs;
 	for( int index=0; index<n_procs; index++ ){
 		int temp_y_i = y_per_rank * index;
 		int temp_max_y_i = y_per_rank * (index + 1);
 		// Assign any leftover y points to the last rank.
-		// Since the last couple y points will be close to -1.5 and thus mostly outside
-		// the Mandelbrot set, this shouldn't create to large of a load imbalance.
+		if( index == n_procs-1 ){
+			temp_max_y_i = low_density_size;
+		}
+		int temp_points_per_rank = (temp_max_y_i-temp_y_i) * x_resolution;
+		num_to_send[index] += temp_points_per_rank;
+		// Save the results of this calculation to the approprite rank.
+		if( my_rank == index ){
+			y_i[0] = temp_y_i;
+			max_y_i[0] = temp_max_y_i;
+			points_per_rank += temp_points_per_rank;
+		}
+	}
+
+	// Divide the high density y indices.
+	y_per_rank = high_density_size / n_procs;
+	for( int index=0; index<n_procs; index++ ){
+		int temp_y_i = y_per_rank * index + low_density_size;
+		int temp_max_y_i = y_per_rank * (index + 1) + low_density_size;
+		// Assign any leftover y points to the last rank.
+		if( index == n_procs-1 ){
+			temp_max_y_i = low_density_size + high_density_size;
+		}
+		int temp_points_per_rank = (temp_max_y_i-temp_y_i) * x_resolution;
+		num_to_send[index] += temp_points_per_rank;
+		// Save the results of this calculation to the approprite rank.
+		if( my_rank == index ){
+			y_i[1] = temp_y_i;
+			max_y_i[1] = temp_max_y_i;
+			points_per_rank += temp_points_per_rank;
+		}
+	}
+
+	// Divide the second low density y indices.
+	y_per_rank = low_density_size / n_procs;
+	for( int index=0; index<n_procs; index++ ){
+		int temp_y_i = y_per_rank * index + low_density_size + high_density_size;
+		int temp_max_y_i = y_per_rank * (index + 1) + low_density_size + high_density_size;
+		// Assign any leftover y points to the last rank.
 		if( index == n_procs-1 ){
 			temp_max_y_i = y_resolution;
 		}
 		int temp_points_per_rank = (temp_max_y_i-temp_y_i) * x_resolution;
-		num_to_send[index] = temp_points_per_rank;
+		num_to_send[index] += temp_points_per_rank;
 		// Save the results of this calculation to the approprite rank.
 		if( my_rank == index ){
-			y_i = temp_y_i;
-			max_y_i = temp_max_y_i;
-			points_per_rank = temp_points_per_rank;
+			y_i[2] = temp_y_i;
+			max_y_i[2] = temp_max_y_i;
+			points_per_rank += temp_points_per_rank;
 		}
 	}
 
@@ -158,20 +219,23 @@ int main(int argc, char **argv){
 
 	// printf("Rank %d calculating points for y from %d to %d for a total of %d points\n", my_rank, y_i, max_y_i, points_per_rank);
 	// Calculate Mandelbrot set in range, store results in buffer.
-	while( y_i<max_y_i ){
-		y = -1.5 + (y_i * y_step);
-		for( int x_i=0; x_i<x_resolution; x_i++ ){
-			x = -2.0 + x_i * x_step;
-			// printf("Rank %d calculating point %f,%f\n", my_rank, x, y);
-			double complex c = x + y * I;
-			struct in_set_result result;
-			result.x = x;
-			result.y = y;
-			result.iterations = in_mandelbrot_set( c, max_iterations );
-			result_buffer[ buffer_i ] = result;
-			buffer_i++;
+	for( int index=0; index<3; index++ ){
+		int y_index = y_i[index];
+		while( y_index<max_y_i[index] ){
+			y = -1.5 + (y_index * y_step);
+			for( int x_i=0; x_i<x_resolution; x_i++ ){
+				x = -2.0 + x_i * x_step;
+				// printf("Rank %d calculating point %f,%f\n", my_rank, x, y);
+				double complex c = x + y * I;
+				struct in_set_result result;
+				result.x = x;
+				result.y = y;
+				result.iterations = in_mandelbrot_set( c, max_iterations );
+				result_buffer[ buffer_i ] = result;
+				buffer_i++;
+			}
+			y_index++;
 		}
-		y_i++;
 	}
 
 	if( verbose ){
@@ -241,6 +305,8 @@ int main(int argc, char **argv){
 		fclose(file);
 	}
 
+	free(y_i);
+	free(max_y_i);
 	free(num_to_send);
 	free(result_buffer);
 	if(my_rank == ROOT_RANK) {
