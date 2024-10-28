@@ -116,27 +116,9 @@ int main(int argc, char **argv){
 	chunk_sizes[1] = high_density_size;
 	chunk_sizes[2] = low_density_size;
 
-	//Create a datatype for the nth worker_results[n] struct
-	MPI_Datatype mpi_in_set_result;
-	int lengths[3] = { 1, 1, 1 };
-	// Calculate the displacement of the struct's fields.
-	MPI_Aint displacements[3];
-	struct in_set_result dummy_result;
-	MPI_Aint base_address;
-	MPI_Get_address(&dummy_result, &base_address);
-  MPI_Get_address(&dummy_result.x, &displacements[0]);
-  MPI_Get_address(&dummy_result.y, &displacements[1]);
-  MPI_Get_address(&dummy_result.iterations, &displacements[2]);
-	displacements[0] = MPI_Aint_diff(displacements[0], base_address);
-  displacements[1] = MPI_Aint_diff(displacements[1], base_address);
-  displacements[2] = MPI_Aint_diff(displacements[2], base_address);
-	MPI_Datatype types[3] = { MPI_DOUBLE, MPI_DOUBLE, MPI_INT };
-	MPI_Type_create_struct( 3, lengths, displacements, types, &mpi_in_set_result );
-	MPI_Type_commit(&mpi_in_set_result);
-
 	// An array to store the starting and max y values for the chunks of y values
 	// each ranks is responsible for.
-	int * y_i = (int*)malloc(sizeof(int)*num_chunks);
+	int * start_y_i = (int*)malloc(sizeof(int)*num_chunks);
 	int * max_y_i = (int*)malloc(sizeof(int)*num_chunks);
 	// A 2D array to store the size of each rank's result buffers for each chunk
 	// of y values.
@@ -157,7 +139,7 @@ int main(int argc, char **argv){
 			y_offset += chunk_sizes[ chunk_i-1 ];
 		}
 		for( int rank_i=0; rank_i<n_procs; rank_i++ ){
-			int temp_y_i = y_per_rank * rank_i + y_offset;
+			int temp_start_y_i = y_per_rank * rank_i + y_offset;
 			int temp_max_y_i = y_per_rank * (rank_i + 1) + y_offset;
 			if( rank_i == n_procs-1 ){
 				if( chunk_i == num_chunks-1 ){
@@ -166,10 +148,10 @@ int main(int argc, char **argv){
 					temp_max_y_i = y_offset + chunk_sizes[ chunk_i ];
 				}
 			}
-			int temp_points_per_rank = (temp_max_y_i-temp_y_i) * x_resolution;
+			int temp_points_per_rank = (temp_max_y_i-temp_start_y_i) * x_resolution;
 			num_to_send[chunk_i][rank_i] = temp_points_per_rank;
 			if( my_rank == rank_i ){
-				y_i[chunk_i] = temp_y_i;
+				start_y_i[chunk_i] = temp_start_y_i;
 				max_y_i[chunk_i] = temp_max_y_i;
 			}
 		}
@@ -210,13 +192,13 @@ int main(int argc, char **argv){
 		set_calc_begin = clock();
 	}
 
-	// printf("Rank %d calculating points for y from %d to %d for a total of %d points\n", my_rank, y_i, max_y_i, points_per_rank);
+	// printf("Rank %d calculating points for y from %d to %d for a total of %d points\n", my_rank, start_y_i, max_y_i, points_per_rank);
 	// Calculate Mandelbrot set in range, store results in buffer.
 	for( int chunk_i=0; chunk_i<num_chunks; chunk_i++ ){
-		int y_index = y_i[chunk_i];
+		int y_i = start_y_i[chunk_i];
 		int buffer_i = 0;
-		while( y_index<max_y_i[chunk_i] ){
-			double y = -1.5 + (y_index * y_step);
+		while( y_i<max_y_i[chunk_i] ){
+			double y = -1.5 + (y_i * y_step);
 			for( int x_i=0; x_i<x_resolution; x_i++ ){
 				double x = -2.0 + x_i * x_step;
 				// printf("Rank %d calculating point %f,%f\n", my_rank, x, y);
@@ -228,7 +210,7 @@ int main(int argc, char **argv){
 				result_buffer[chunk_i][ buffer_i ] = result;
 				buffer_i++;
 			}
-			y_index++;
+			y_i++;
 		}
 	}
 
@@ -237,6 +219,24 @@ int main(int argc, char **argv){
 	  double seconds = (double)(set_calc_end - set_calc_begin) / CLOCKS_PER_SEC;
 		printf("Rank %d took %f seconds to calculate its share of the points.\n", my_rank, seconds);
 	}
+
+	//Create a datatype for the nth worker_results[n] struct
+	MPI_Datatype mpi_in_set_result;
+	int lengths[3] = { 1, 1, 1 };
+	// Calculate the displacement of the struct's fields.
+	MPI_Aint displacements[3];
+	struct in_set_result dummy_result;
+	MPI_Aint base_address;
+	MPI_Get_address(&dummy_result, &base_address);
+  MPI_Get_address(&dummy_result.x, &displacements[0]);
+  MPI_Get_address(&dummy_result.y, &displacements[1]);
+  MPI_Get_address(&dummy_result.iterations, &displacements[2]);
+	displacements[0] = MPI_Aint_diff(displacements[0], base_address);
+  displacements[1] = MPI_Aint_diff(displacements[1], base_address);
+  displacements[2] = MPI_Aint_diff(displacements[2], base_address);
+	MPI_Datatype types[3] = { MPI_DOUBLE, MPI_DOUBLE, MPI_INT };
+	MPI_Type_create_struct( 3, lengths, displacements, types, &mpi_in_set_result );
+	MPI_Type_commit(&mpi_in_set_result);
 
 	// Gather results of Mandelbrot set calculations
 	for( int chunk_i=0; chunk_i<num_chunks; chunk_i++){
@@ -283,7 +283,7 @@ int main(int argc, char **argv){
 	}
 
 	free(chunk_sizes);
-	free(y_i);
+	free(start_y_i);
 	free(max_y_i);
 	for(int chunk_i=0; chunk_i<num_chunks; chunk_i++){
     free(num_to_send[chunk_i]);
