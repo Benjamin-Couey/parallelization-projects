@@ -15,12 +15,14 @@ static char args_doc[] = "Limit X resolution Y resolution";
 
 static struct argp_option options[] = {
 	{ "verbose", 'v', 0, 0, "Provide verbose output." },
+	{ "output", 'o', "FILE", 0, "Output to specified file instead of standard mandelbrot_set.csv." },
 	{ 0 }
 };
 
 struct arguments {
 	char *args[3];
 	int verbose;
+	char *output_file;
 };
 
 static error_t parse_opt( int key, char *arg, struct argp_state *state) {
@@ -29,6 +31,9 @@ static error_t parse_opt( int key, char *arg, struct argp_state *state) {
 		case 'v':
 			arguments->verbose = 1;
 			break;
+		case 'o':
+      arguments->output_file = arg;
+      break;
 		case ARGP_KEY_ARG:
 			if( state->arg_num >= 3 ){
 				argp_usage( state );
@@ -56,6 +61,8 @@ struct in_set_result {
 int main(int argc, char **argv){
 
 	int verbose, max_iterations, x_resolution, y_resolution;
+	// Variable only the root process will use.
+	char * output_file;
 	int * arguments_buffer = (int*)malloc(sizeof(int)*4);
 
 	int my_rank, n_procs;
@@ -69,6 +76,7 @@ int main(int argc, char **argv){
 	if(my_rank == ROOT_RANK) {
 		struct arguments arguments;
 		arguments.verbose = 0;
+		arguments.output_file = "mandelbrot_set.csv";
 
 		argp_parse (&argp, argc, argv, 0, 0, &arguments);
 
@@ -76,6 +84,7 @@ int main(int argc, char **argv){
 		sscanf(arguments.args[1],"%d",&arguments_buffer[1]);
 		sscanf(arguments.args[2],"%d",&arguments_buffer[2]);
 		arguments_buffer[3] = arguments.verbose;
+		output_file = arguments.output_file;
 	}
 
 	// Broadcast the command line arguments processed by root.
@@ -268,7 +277,7 @@ int main(int argc, char **argv){
 	// TODO: Look into trying to parallelize this process.
 	if(my_rank == ROOT_RANK) {
 		FILE * file;
-		file = fopen("mandelbrot_set.csv", "w+");
+		file = fopen(output_file, "w+");
 		fprintf(file, "x,y,z\n");
 		for( int b_i=0; b_i<(x_resolution*y_resolution); b_i++ ){
 			fprintf(
