@@ -9,7 +9,7 @@
 
 #define ROOT_RANK 0
 
-static char doc[] = "mandelbrot_set -- A simple sequential C script that calculates the Mandelbrot set.";
+static char doc[] = "mandelbrot_set -- A simple C script, parallelized with MPI, that calculates the Mandelbrot set. Should be executed with mpirun.";
 
 static char args_doc[] = "Limit X resolution Y resolution";
 
@@ -63,6 +63,8 @@ int main(int argc, char **argv){
 	int verbose, max_iterations, x_resolution, y_resolution;
 	// Variable only the root process will use.
 	char * output_file;
+	// Array to store the arguments needed by all processes. Space is not allocated
+	// for the output_file argument since only root will use it.
 	int * arguments_buffer = (int*)malloc(sizeof(int)*4);
 
 	int my_rank, n_procs;
@@ -88,7 +90,6 @@ int main(int argc, char **argv){
 	}
 
 	// Broadcast the command line arguments processed by root.
-	// TODO: Calculate number of values to send from structure of arguments
 	MPI_Bcast( arguments_buffer, 4, MPI_INT, ROOT_RANK, MPI_COMM_WORLD );
 
 	max_iterations = arguments_buffer[0];
@@ -98,7 +99,6 @@ int main(int argc, char **argv){
 
 	free(arguments_buffer);
 
-	// printf("My rank is %d, max_iterations: %d, x_resolution: %d, y_resolution: %d, verbose: %d\n", my_rank, max_iterations, x_resolution, y_resolution, verbose);
 	double x_step = 3.0 / x_resolution;
 	double y_step = 3.0 / y_resolution;
 
@@ -201,8 +201,8 @@ int main(int argc, char **argv){
 		set_calc_begin = clock();
 	}
 
-	// printf("Rank %d calculating points for y from %d to %d for a total of %d points\n", my_rank, start_y_i, max_y_i, points_per_rank);
-	// Calculate Mandelbrot set in range, store results in buffer.
+	// For each chunk, calculate Mandelbrot set in range, store results in
+	// corresponding buffer.
 	for( int chunk_i=0; chunk_i<num_chunks; chunk_i++ ){
 		int y_i = start_y_i[chunk_i];
 		int buffer_i = 0;
@@ -210,7 +210,6 @@ int main(int argc, char **argv){
 			double y = -1.5 + (y_i * y_step);
 			for( int x_i=0; x_i<x_resolution; x_i++ ){
 				double x = -2.0 + x_i * x_step;
-				// printf("Rank %d calculating point %f,%f\n", my_rank, x, y);
 				double complex c = x + y * I;
 				struct in_set_result result;
 				result.x = x;
@@ -229,7 +228,7 @@ int main(int argc, char **argv){
 		printf("Rank %d took %f seconds to calculate its share of the points.\n", my_rank, seconds);
 	}
 
-	//Create a datatype for the nth worker_results[n] struct
+	// Create a datatype for the in_set_result struct
 	MPI_Datatype mpi_in_set_result;
 	int lengths[3] = { 1, 1, 1 };
 	// Calculate the displacement of the struct's fields.
@@ -261,17 +260,6 @@ int main(int argc, char **argv){
 			MPI_COMM_WORLD
 		);
 	}
-
-	// if( my_rank == ROOT_RANK ){
-	// 	for( int b_i=0; b_i<(x_resolution*y_resolution); b_i++ ){
-	// 		printf(
-	// 			"Some rank calculated point %f,%f; stopped after %d iterations\n",
-	// 			gathered_results[b_i].x,
-	// 			gathered_results[b_i].y,
-	// 			gathered_results[b_i].iterations
-	// 		);
-	// 	}
-	// }
 
 	// Have the root process write the results to a file.
 	// TODO: Look into trying to parallelize this process.
