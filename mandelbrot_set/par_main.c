@@ -3,11 +3,14 @@
 #include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #include "mandelbrot_set.c"
 
 #define ROOT_RANK 0
+#define BUFSIZE 128
+#define SIZE_PER_LINE 32
 
 static char doc[] = "mandelbrot_set -- A simple C script, parallelized with MPI, that calculates the Mandelbrot set. Should be executed with mpirun.";
 
@@ -53,19 +56,16 @@ static error_t parse_opt( int key, char *arg, struct argp_state *state) {
 
 static struct argp argp = { options, parse_opt, args_doc, doc };
 
-struct in_set_result {
-	double x, y;
-	int iterations;
-};
-
 int main(int argc, char **argv){
 
 	int verbose, max_iterations, x_resolution, y_resolution;
-	// Variable only the root process will use.
+
+	// Array to store the arguments needed by all processes. Space is allocated for
+	// the string length of the output file, so that non-root ranks will know how
+	// much space to allocate.
+	int * arguments_buffer = (int*)malloc(sizeof(int)*5);
+	// Char array to store the name of the output file.
 	char * output_file;
-	// Array to store the arguments needed by all processes. Space is not allocated
-	// for the output_file argument since only root will use it.
-	int * arguments_buffer = (int*)malloc(sizeof(int)*4);
 
 	int my_rank, n_procs;
 
@@ -87,10 +87,16 @@ int main(int argc, char **argv){
 		sscanf(arguments.args[2],"%d",&arguments_buffer[2]);
 		arguments_buffer[3] = arguments.verbose;
 		output_file = arguments.output_file;
+		arguments_buffer[4] = strlen(arguments.output_file);
 	}
 
 	// Broadcast the command line arguments processed by root.
-	MPI_Bcast( arguments_buffer, 4, MPI_INT, ROOT_RANK, MPI_COMM_WORLD );
+	MPI_Bcast( arguments_buffer, 5, MPI_INT, ROOT_RANK, MPI_COMM_WORLD );
+	// Only the non-root ranks need to explicitly allocate space.
+	if(my_rank != ROOT_RANK) {
+		output_file = (char*)malloc(sizeof(char)*arguments_buffer[4]);
+	}
+	MPI_Bcast( output_file, arguments_buffer[4], MPI_CHAR, ROOT_RANK, MPI_COMM_WORLD );
 
 	max_iterations = arguments_buffer[0];
 	x_resolution = arguments_buffer[1];
@@ -135,6 +141,12 @@ int main(int argc, char **argv){
   for (int chunk_i=0; chunk_i<num_chunks; chunk_i++) {
     num_to_send[chunk_i]=(int*)malloc(sizeof(int)*n_procs);
   }
+	// A 2D array to store the displacement of the text each rank will write to the
+	// output file for each chunk of y values.
+	int ** file_offsets = (int**)malloc(sizeof(int*)*num_chunks);
+  for (int chunk_i=0; chunk_i<num_chunks; chunk_i++) {
+    file_offsets[chunk_i]=(int*)malloc(sizeof(int)*n_procs);
+  }
 
 	// Have all ranks calculate the range of y values each rank will be responsible
 	// for for each chunk of y values.
@@ -166,57 +178,37 @@ int main(int argc, char **argv){
 		}
 	}
 
-	// The buffers to store the results of a rank's calculations.
-	struct in_set_result ** result_buffer = (struct in_set_result**)malloc(sizeof(struct in_set_result*)*num_chunks);
+	// The buffers to store the results of a rank's calculations in the form they
+	// will be written to the output file.
+	char ** result_buffer = (char**)malloc(sizeof(char*)*num_chunks);
   for (int chunk_i=0; chunk_i<num_chunks; chunk_i++) {
-    result_buffer[chunk_i]=(struct in_set_result*)malloc(sizeof(struct in_set_result)*num_to_send[chunk_i][my_rank]);
+    result_buffer[chunk_i]=(char*)malloc(sizeof(char)*num_to_send[chunk_i][my_rank]*SIZE_PER_LINE);
   }
-
-	// Variables only the root process will use.
-	// A buffer to store the gathered results of all the ranks' calculations.
-	struct in_set_result * gathered_results;
-	// A 2D array to store the displacement of the results the root rank will be
-  // receiving for each chunk of y values.
-  int ** displacement = (int**)malloc(sizeof(int*)*num_chunks);
-
-	if(my_rank == ROOT_RANK) {
-		gathered_results = (struct in_set_result*)malloc(sizeof(struct in_set_result)*x_resolution*y_resolution);
-	  for (int chunk_i=0; chunk_i<num_chunks; chunk_i++) {
-	    displacement[chunk_i]=(int*)malloc(sizeof(int)*n_procs);
-			for ( int rank_i=0; rank_i<n_procs; rank_i++) {
-				if( rank_i > 0 ){
-					displacement[chunk_i][rank_i] = displacement[chunk_i][rank_i-1] + num_to_send[chunk_i][rank_i-1];
-				} else {
-					if( chunk_i > 0 ) {
-						displacement[chunk_i][rank_i] = displacement[chunk_i-1][n_procs-1] + num_to_send[chunk_i-1][n_procs-1];
-					} else {
-						displacement[chunk_i][rank_i] == 0;
-					}
-				}
-		  }
-	  }
-	}
 
 	if( verbose ){
 		set_calc_begin = clock();
 	}
 
-	// For each chunk, calculate Mandelbrot set in range, store results in
+	// For each chunk, calculate Mandelbrot set in range and store results in the
 	// corresponding buffer.
+	// A char array to store strings as ranks calculate how much space in the output
+	// file their results will take up and when actually writing to the file.
+	char * char_buffer = (char*)malloc(sizeof(char)*BUFSIZE);
 	for( int chunk_i=0; chunk_i<num_chunks; chunk_i++ ){
 		int y_i = start_y_i[chunk_i];
-		int buffer_i = 0;
+		char * moving_pointer = result_buffer[chunk_i];
 		while( y_i<max_y_i[chunk_i] ){
 			double y = -1.5 + (y_i * y_step);
 			for( int x_i=0; x_i<x_resolution; x_i++ ){
 				double x = -2.0 + x_i * x_step;
 				double complex c = x + y * I;
-				struct in_set_result result;
-				result.x = x;
-				result.y = y;
-				result.iterations = in_mandelbrot_set( c, max_iterations );
-				result_buffer[chunk_i][ buffer_i ] = result;
-				buffer_i++;
+				int iterations = in_mandelbrot_set( c, max_iterations );
+				// Calculate how much space the result will take up in the file.
+				snprintf(char_buffer, BUFSIZE, "%f,%f,%d\n", x, y, iterations );
+				int line_size = strlen( char_buffer );
+				strcpy( moving_pointer, char_buffer );
+				moving_pointer = moving_pointer + line_size;
+				file_offsets[chunk_i][my_rank] += line_size;
 			}
 			y_i++;
 		}
@@ -228,57 +220,68 @@ int main(int argc, char **argv){
 		printf("Rank %d took %f seconds to calculate its share of the points.\n", my_rank, seconds);
 	}
 
-	// Create a datatype for the in_set_result struct
-	MPI_Datatype mpi_in_set_result;
-	int lengths[3] = { 1, 1, 1 };
-	// Calculate the displacement of the struct's fields.
-	MPI_Aint displacements[3];
-	struct in_set_result dummy_result;
-	MPI_Aint base_address;
-	MPI_Get_address(&dummy_result, &base_address);
-  MPI_Get_address(&dummy_result.x, &displacements[0]);
-  MPI_Get_address(&dummy_result.y, &displacements[1]);
-  MPI_Get_address(&dummy_result.iterations, &displacements[2]);
-	displacements[0] = MPI_Aint_diff(displacements[0], base_address);
-  displacements[1] = MPI_Aint_diff(displacements[1], base_address);
-  displacements[2] = MPI_Aint_diff(displacements[2], base_address);
-	MPI_Datatype types[3] = { MPI_DOUBLE, MPI_DOUBLE, MPI_INT };
-	MPI_Type_create_struct( 3, lengths, displacements, types, &mpi_in_set_result );
-	MPI_Type_commit(&mpi_in_set_result);
-
-	// Gather results of Mandelbrot set calculations
-	for( int chunk_i=0; chunk_i<num_chunks; chunk_i++){
-		MPI_Gatherv(
-			result_buffer[chunk_i],
-			num_to_send[chunk_i][my_rank],
-			mpi_in_set_result,
-			gathered_results,
-			num_to_send[chunk_i],
-			displacement[chunk_i],
-			mpi_in_set_result,
-			ROOT_RANK,
+	// Gather the file_offsets calculated by reach rank.
+	for( int chunk_i=0; chunk_i<num_chunks; chunk_i++ ){
+		MPI_Allgather(
+			MPI_IN_PLACE,
+			1,
+			MPI_INT,
+			file_offsets[chunk_i],
+			1,
+			MPI_INT,
 			MPI_COMM_WORLD
 		);
 	}
 
-	// Have the root process write the results to a file.
-	// TODO: Look into trying to parallelize this process.
-	if(my_rank == ROOT_RANK) {
+	// file_offsets currently stores the character length of each rank's chunk of
+	// results to write. Need to recalculate it so it describes how far, from 0,
+	// each rank should start writing it's results.
+	for( int chunk_i=0; chunk_i<num_chunks; chunk_i++ ){
+		for( int rank_i=0; rank_i<n_procs; rank_i++ ){
+			if( rank_i>0 ){
+				file_offsets[chunk_i][rank_i] += file_offsets[chunk_i][rank_i-1];
+			} else if( chunk_i>0 ){
+				file_offsets[chunk_i][rank_i] += file_offsets[chunk_i-1][n_procs-1];
+			}
+		}
+	}
+
+	for( int chunk_i=num_chunks-1; chunk_i>=0; chunk_i-- ){
+		for( int rank_i=n_procs-1; rank_i>=0; rank_i-- ){
+			if( rank_i>0 ){
+				file_offsets[chunk_i][rank_i] = file_offsets[chunk_i][rank_i-1];
+			} else {
+				if( chunk_i>0 ){
+					file_offsets[chunk_i][rank_i] = file_offsets[chunk_i-1][n_procs-1];
+				} else {
+					file_offsets[chunk_i][rank_i] = 0;
+				}
+			}
+		}
+	}
+
+	// Have the processes write the results to a file.
+	// Only need to write the header once, so only have the root write the header.
+	int header_size = strlen("x,y,z\n");
+	if( my_rank == ROOT_RANK ){
 		FILE * file;
 		file = fopen(output_file, "w+");
 		fprintf(file, "x,y,z\n");
-		for( int b_i=0; b_i<(x_resolution*y_resolution); b_i++ ){
-			fprintf(
-				file,
-				"%f,%f,%d\n",
-				gathered_results[b_i].x,
-				gathered_results[b_i].y,
-				gathered_results[b_i].iterations
-			);
-		}
 		fclose(file);
 	}
 
+	MPI_File file;
+	int test = MPI_File_open( MPI_COMM_WORLD, output_file, MPI_MODE_WRONLY | MPI_MODE_CREATE, MPI_INFO_NULL, &file );
+
+	for( int chunk_i=0; chunk_i<num_chunks; chunk_i++ ){
+		MPI_File_set_view( file, header_size + file_offsets[chunk_i][my_rank], MPI_CHAR, MPI_CHAR, "native", MPI_INFO_NULL );
+		int test = MPI_File_write_all( file, result_buffer[chunk_i], strlen(result_buffer[chunk_i]), MPI_CHAR, MPI_STATUS_IGNORE );
+	}
+	MPI_File_close(&file);
+
+	if(my_rank != ROOT_RANK){
+		free(output_file);
+	}
 	free(chunk_sizes);
 	free(start_y_i);
 	free(max_y_i);
@@ -290,13 +293,7 @@ int main(int argc, char **argv){
     free(result_buffer[chunk_i]);
   }
 	free(result_buffer);
-	if(my_rank == ROOT_RANK) {
-		for(int chunk_i=0; chunk_i<num_chunks; chunk_i++){
-	    free(displacement[chunk_i]);
-	  }
-		free(gathered_results);
-	}
-	free(displacement);
+	free(char_buffer);
 
 	if( my_rank == ROOT_RANK && verbose ){
 		end = clock();
