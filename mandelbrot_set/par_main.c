@@ -19,6 +19,7 @@ static char args_doc[] = "Limit X resolution Y resolution";
 static struct argp_option options[] = {
 	{ "verbose", 'v', 0, 0, "Provide verbose output." },
 	{ "output", 'o', "FILE", 0, "Output to specified file instead of standard mandelbrot_set.csv." },
+	{ "high density ratio", 'h', "RATIO", 0, "Override ratio of y_resolution in high density chunk."  },
 	{ 0 }
 };
 
@@ -26,6 +27,7 @@ struct arguments {
 	char *args[3];
 	int verbose;
 	char *output_file;
+	double high_density_ratio;
 };
 
 static error_t parse_opt( int key, char *arg, struct argp_state *state) {
@@ -37,6 +39,9 @@ static error_t parse_opt( int key, char *arg, struct argp_state *state) {
 		case 'o':
       arguments->output_file = arg;
       break;
+		case 'h':
+			arguments->high_density_ratio = atof(arg);
+			break;
 		case ARGP_KEY_ARG:
 			if( state->arg_num >= 3 ){
 				argp_usage( state );
@@ -59,7 +64,7 @@ static struct argp argp = { options, parse_opt, args_doc, doc };
 int main(int argc, char **argv){
 
 	int verbose, max_iterations, x_resolution, y_resolution;
-
+	double high_density_ratio = 0.0;
 	// Array to store the arguments needed by all processes. Space is allocated for
 	// the string length of the output file, so that non-root ranks will know how
 	// much space to allocate.
@@ -78,6 +83,7 @@ int main(int argc, char **argv){
 	if(my_rank == ROOT_RANK) {
 		struct arguments arguments;
 		arguments.verbose = 0;
+		arguments.high_density_ratio = 0.0;
 		arguments.output_file = "mandelbrot_set.csv";
 
 		argp_parse (&argp, argc, argv, 0, 0, &arguments);
@@ -88,6 +94,7 @@ int main(int argc, char **argv){
 		arguments_buffer[3] = arguments.verbose;
 		output_file = arguments.output_file;
 		arguments_buffer[4] = strlen(arguments.output_file);
+		high_density_ratio = arguments.high_density_ratio;
 	}
 
 	// Broadcast the command line arguments processed by root.
@@ -97,6 +104,8 @@ int main(int argc, char **argv){
 		output_file = (char*)malloc(sizeof(char)*arguments_buffer[4]);
 	}
 	MPI_Bcast( output_file, arguments_buffer[4], MPI_CHAR, ROOT_RANK, MPI_COMM_WORLD );
+
+	MPI_Bcast( &high_density_ratio, 1, MPI_DOUBLE, ROOT_RANK, MPI_COMM_WORLD );
 
 	max_iterations = arguments_buffer[0];
 	x_resolution = arguments_buffer[1];
@@ -123,8 +132,18 @@ int main(int argc, char **argv){
 	// The range of -0.66 to 0.66 is about 1.33/3 or 4/9ths of the full -1.5 to 1.5
 	// range of y values the script is calculating. This creates one high density
 	// chunk with a low density chunk, each about 5/18ths, on either side.
-	int low_density_size = y_resolution * 5 / 18;
-	int high_density_size = y_resolution * 4 / 9;
+	int low_density_size, high_density_size;
+	// If the user provided the ratio of the y_resolution taken up by the high_density_size,
+	// use that.
+	if( high_density_ratio > 0.0 && high_density_ratio <= 1.0 ){
+		double low_density_ratio = ( 1.0 - high_density_ratio ) / 2;
+		low_density_size = (int)y_resolution * low_density_ratio;
+		high_density_size = (int)y_resolution * high_density_ratio;
+	} else {
+		low_density_size = y_resolution * 5 / 18;
+		high_density_size = y_resolution * 4 / 9;
+	}
+
 	int num_chunks = 3;
 	int * chunk_sizes = (int*)malloc(sizeof(int)*num_chunks);
 	chunk_sizes[0] = low_density_size;

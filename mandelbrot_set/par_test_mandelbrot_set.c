@@ -86,11 +86,43 @@ void test_num_processes_does_not_change(){
 	system("rm temp_seq_mandelbrot_set.csv");
 }
 
+void compare_high_density_ratio( char * seq_file_name, double h ){
+	char buffer[BUFSIZE];
+	snprintf(
+		buffer,
+		sizeof(buffer),
+		"mpirun -np 4 ./par_mandelbrot_set 100 100 100 -o temp_par_mandelbrot_set.csv -h %f",
+		h
+	);
+	system( buffer );
+
+	FILE *fp;
+	snprintf( buffer, sizeof(buffer), "diff %s temp_par_mandelbrot_set.csv", seq_file_name );
+	fp = popen(buffer, "r");
+	CU_ASSERT(fp != NULL);
+	// diff will print nothing and cause fgets to return NULL if the files are the
+	// same.
+	CU_ASSERT( (fgets(buffer, BUFSIZE, fp) == NULL) );
+	pclose(fp);
+
+	system("rm temp_par_mandelbrot_set.csv");
+}
+
+void test_high_density_ratio_does_not_change(){
+	system("./seq_mandelbrot_set 100 100 100 -o temp_seq_mandelbrot_set.csv");
+	compare_high_density_ratio("temp_seq_mandelbrot_set.csv", 1.0);
+	compare_high_density_ratio("temp_seq_mandelbrot_set.csv", 0.4);
+	compare_high_density_ratio("temp_seq_mandelbrot_set.csv", 0.66);
+	compare_high_density_ratio("temp_seq_mandelbrot_set.csv", 0.0);
+	system("rm temp_seq_mandelbrot_set.csv");
+}
+
 int main(){
 	CU_initialize_registry();
 	CU_pSuite suite = CU_add_suite("AddTestSuite", 0, 0);
 	CU_add_test(suite, "test that par_main.c reports the same values as seq_main.c", test_par_against_seq);
 	CU_add_test(suite, "test that par_main.c's output does not change for different numbers of processes", test_num_processes_does_not_change);
+	CU_add_test(suite, "test that par_main.c's output does not change for different high density ratios", test_high_density_ratio_does_not_change);
 	CU_basic_run_tests();
 	CU_cleanup_registry();
 	return 0;
