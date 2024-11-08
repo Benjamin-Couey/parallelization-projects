@@ -290,11 +290,11 @@ int main(int argc, char **argv){
 	}
 
 	MPI_File file;
-	int test = MPI_File_open( MPI_COMM_WORLD, output_file, MPI_MODE_WRONLY | MPI_MODE_CREATE, MPI_INFO_NULL, &file );
+	MPI_File_open( MPI_COMM_WORLD, output_file, MPI_MODE_WRONLY | MPI_MODE_CREATE, MPI_INFO_NULL, &file );
 
 	for( int chunk_i=0; chunk_i<num_chunks; chunk_i++ ){
 		MPI_File_set_view( file, header_size + file_offsets[chunk_i][my_rank], MPI_CHAR, MPI_CHAR, "native", MPI_INFO_NULL );
-		int test = MPI_File_write_all( file, result_buffer[chunk_i], strlen(result_buffer[chunk_i]), MPI_CHAR, MPI_STATUS_IGNORE );
+		MPI_File_write_all( file, result_buffer[chunk_i], strlen(result_buffer[chunk_i]), MPI_CHAR, MPI_STATUS_IGNORE );
 	}
 	MPI_File_close(&file);
 
